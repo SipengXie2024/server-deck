@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deck</title>
+<link rel="stylesheet" href="../_static/viewer.css">
+<script type="module" src="../_static/viewer.js"></script>
+<body>
+<header class="bar">
+  <a class="home" href="../" title="所有 deck">◂</a>
+  <b id="deck-name"></b>
+  <select id="version" title="版本"></select>
+  <label class="toggle" id="compare-wrap"><input type="checkbox" id="compare"> 对照上一版</label>
+  <a id="download" class="dl" hidden>下载 pptx</a>
+  <span class="grow"></span>
+  <span id="open-count" class="muted"></span>
+</header>
+<div class="layout">
+  <nav id="thumbs" aria-label="页面"></nav>
+  <main id="stage">
+    <div id="frames"></div>
+    <section id="notes" aria-label="备注"></section>
+    <p class="hint muted">点一个形状写批注 · 点空白处或按 <button id="whole" class="link">整页批注</button> · ←/→ 翻页</p>
+  </main>
+  <aside id="side">
+    <form id="composer" hidden>
+      <div class="target" id="composer-target"></div>
+      <textarea id="composer-body" rows="4" placeholder="写批注…（Ctrl+Enter 添加）"></textarea>
+      <div class="row"><button type="submit" class="pri">添加到待发</button><button type="button" id="composer-cancel">取消</button></div>
+    </form>
+    <section>
+      <h3>本页 <span id="slide-label" class="muted"></span></h3>
+      <ul id="slide-comments" class="comments"></ul>
+    </section>
+    <details id="all">
+      <summary>全部批注 <span id="all-count" class="muted"></span></summary>
+      <ul id="all-comments" class="comments"></ul>
+    </details>
+    <div class="dock">
+      <div class="muted" id="draft-count"></div>
+      <div class="row"><button id="send" class="pri">发送</button><button id="copy">复制为提示词</button></div>
+      <div id="toast" class="muted" role="status"></div>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

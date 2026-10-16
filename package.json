@@ -1,0 +1,17 @@
+{
+  "name": "server-deck",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "deck": "bin/deck.mjs"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "jszip": "^3.10.2"
+  },
+  "description": "Review native .pptx decks built on a server in the browser, and hand the comments back to a Claude Code session.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}

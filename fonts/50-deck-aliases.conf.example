@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!-- Family names that decks ask for but no installed font file carries.
+     Copy to 50-deck-aliases.conf and link it into ~/.config/fontconfig/conf.d/;
+     lib/fonts.mjs reads it so the font check treats these names as installed. -->
+<fontconfig>
+  <!-- Example: decks ask for "Foo Sans R", the installed file's family is "Foo Sans". -->
+  <alias binding="same">
+    <family>Foo Sans R</family>
+    <prefer><family>Foo Sans</family></prefer>
+  </alias>
+</fontconfig>

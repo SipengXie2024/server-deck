@@ -1,0 +1,17 @@
+# systemd --user unit. Copy to ~/.config/systemd/user/deck-server.service,
+# set ExecStart to an absolute node path (`command -v node`) and the checkout path, then:
+#   systemctl --user enable --now deck-server
+#   loginctl enable-linger $USER   # keep it running after logout
+[Unit]
+Description=server-deck viewer and comment API (127.0.0.1:7240)
+
+[Service]
+ExecStart=/usr/bin/node %h/server-deck/server.mjs
+WorkingDirectory=%h/server-deck
+Restart=on-failure
+RestartSec=2
+# Rendering runs in the deck CLI, not here; the server only serves files and JSON.
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

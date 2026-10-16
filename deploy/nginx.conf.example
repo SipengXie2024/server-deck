@@ -1,0 +1,15 @@
+# Inside your server { } block. The viewer has no login of its own: keep it
+# behind auth. X-Remote-User becomes the comment author.
+location = /deck {
+    return 301 /deck/;
+}
+
+location ^~ /deck/ {
+    auth_basic "deck";
+    auth_basic_user_file /etc/nginx/deck.htpasswd;   # htpasswd -c /etc/nginx/deck.htpasswd you
+    proxy_pass http://127.0.0.1:7240/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Remote-User $remote_user;
+    client_max_body_size 1m;
+    add_header X-Robots-Tag "noindex, nofollow";
+}
