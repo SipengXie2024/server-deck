@@ -78,6 +78,8 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .comments .empty { font-size: 12px; }
 .dock { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 #toast { font-size: 12px; min-height: 1em; }
+button.danger { color: #b42318; align-self: flex-start; font-size: 12px; }
+button.danger[hidden] { display: none; }
 
 .index { padding: 20px 28px; } .index li { margin: 6px 0; }
 

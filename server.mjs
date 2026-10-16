@@ -145,6 +145,19 @@ async function handle(req, res) {
 		return json(res, 200, { comments: saved });
 	}
 
+	if (rest[0] === "api" && rest[1] === "comments" && rest.length === 2 && req.method === "DELETE") {
+		// Clear every comment written on one version, resolved or not.
+		const v = Number(url.searchParams.get("version"));
+		if (!(await versions(name)).includes(v)) return send(res, 400, `no version ${url.searchParams.get("version")}`);
+		const removed = await updateComments(name, (comments) => {
+			const keep = comments.filter((c) => c.version !== v);
+			const n = comments.length - keep.length;
+			comments.splice(0, comments.length, ...keep);
+			return n;
+		});
+		return json(res, 200, { removed });
+	}
+
 	if (rest[0] === "api" && rest[1] === "comments" && rest.length === 3 && req.method === "DELETE") {
 		const id = rest[2];
 		const result = await updateComments(name, (comments) => {

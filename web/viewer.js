@@ -30,6 +30,9 @@ const S = {
 const deck = () => S.decks.get(S.v);
 const slide = () => deck().slides[S.n - 1];
 const saveDrafts = () => localStorage.setItem(draftsKey, JSON.stringify(S.drafts));
+// Comments belong to the version they were written on; the page shows only the current version's.
+const ofVersion = (c) => c.version === S.v;
+const versionDrafts = () => S.drafts.filter(ofVersion);
 
 async function loadDeck(v) {
 	if (!S.decks.has(v)) {
@@ -86,8 +89,14 @@ function renderHeader() {
 	dl.hidden = !deck().file; // versions published before downloads were kept have no pptx copy
 	dl.href = api(`v/${S.v}/deck.pptx`);
 	dl.title = `下载 v${S.v} 的原 pptx（${deck().file ?? ""}）`;
-	const open = S.comments.filter((c) => c.status === "open").length;
-	$("open-count").textContent = open ? `${open} 条待 Claude 处理` : "";
+	const open = S.comments.filter((c) => c.status === "open" && ofVersion(c)).length;
+	// Open comments on other versions are hidden here but still reach Claude through `deck comments`.
+	const elsewhere = Map.groupBy(S.comments.filter((c) => c.status === "open" && !ofVersion(c)), (c) => c.version);
+	const parts = [
+		open ? `${open} 条待 Claude 处理` : null,
+		...[...elsewhere].sort(([a], [b]) => a - b).map(([v, cs]) => el("button", { class: "link", onclick: () => goTo(v, cs[0].slide) }, `v${v} 还有 ${cs.length} 条未处理`)),
+	].filter(Boolean);
+	$("open-count").replaceChildren(...parts.flatMap((x, i) => (i ? [" · ", x] : [x])));
 }
 
 function renderThumbs() {
@@ -189,13 +198,15 @@ function commentItem(c, { showSlide }) {
 
 function renderSide() {
 	$("slide-label").textContent = `第 ${S.n} 页`;
-	const drafts = S.drafts.map((c) => ({ ...c, draft: true }));
-	const here = [...drafts, ...S.comments].filter((c) => c.slide === S.n && (c.version === S.v || c.status === "open"));
+	const drafts = versionDrafts().map((c) => ({ ...c, draft: true }));
+	const mine = S.comments.filter(ofVersion);
+	const here = [...drafts, ...mine].filter((c) => c.slide === S.n);
 	$("slide-comments").replaceChildren(...(here.length ? here.map((c) => commentItem(c, { showSlide: false })) : [el("li", { class: "muted empty" }, "还没有批注")]));
-	const all = [...drafts, ...S.comments].sort((a, b) => a.slide - b.slide);
+	const all = [...drafts, ...mine].sort((a, b) => a.slide - b.slide);
+	$("clear").hidden = !all.length;
 	$("all-count").textContent = `(${all.length})`;
 	$("all-comments").replaceChildren(...all.map((c) => commentItem(c, { showSlide: true })));
-	const n = S.drafts.length;
+	const n = drafts.length;
 	$("draft-count").textContent = n ? `${n} 条待发` : "没有待发的批注";
 	$("send").disabled = $("copy").disabled = !n;
 	$("send").textContent = n ? `发送 ${n} 条` : "发送";
@@ -272,32 +283,41 @@ function toast(msg) {
 }
 
 async function sendDrafts() {
-	// Drafts may come from several versions; the API takes one version per call.
-	const byVersion = Map.groupBy(S.drafts, (d) => d.version);
-	let sent = 0;
-	for (const [version, drafts] of byVersion) {
-		const r = await fetch(api("api/comments"), {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ version, comments: drafts.map((d) => ({ slide: d.slide, shapeId: d.shape?.id ?? null, at: d.at, body: d.body })) }),
-		});
-		if (!r.ok) {
-			toast(`发送失败：${r.status} ${await r.text()}`);
-			break;
-		}
-		const keys = new Set(drafts.map((d) => d.key));
-		S.drafts = S.drafts.filter((d) => !keys.has(d.key));
-		saveDrafts();
-		sent += drafts.length;
-	}
+	const drafts = versionDrafts();
+	if (!drafts.length) return;
+	const r = await fetch(api("api/comments"), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ version: S.v, comments: drafts.map((d) => ({ slide: d.slide, shapeId: d.shape?.id ?? null, at: d.at, body: d.body })) }),
+	});
+	if (!r.ok) return toast(`发送失败：${r.status} ${await r.text()}`);
+	const keys = new Set(drafts.map((d) => d.key));
+	S.drafts = S.drafts.filter((d) => !keys.has(d.key));
+	saveDrafts();
 	await loadState();
 	await render();
-	if (sent) toast(`已发送 ${sent} 条。在 Claude 会话里说「看批注」。`);
+	toast(`已发送 ${drafts.length} 条。在 Claude 会话里说「看批注」。`);
+}
+
+async function clearVersion() {
+	const sent = S.comments.filter(ofVersion).length;
+	const drafts = versionDrafts().length;
+	if (!confirm(`清除 v${S.v} 的全部批注？已发送 ${sent} 条（含已处理）、待发 ${drafts} 条，删除后不能恢复。其他版本的批注不受影响。`)) return;
+	if (sent) {
+		const r = await fetch(api(`api/comments?version=${S.v}`), { method: "DELETE" });
+		if (!r.ok) return toast(`清除失败：${await r.text()}`);
+	}
+	S.drafts = S.drafts.filter((d) => !ofVersion(d));
+	saveDrafts();
+	await loadState();
+	await render();
+	toast(`已清除 v${S.v} 的批注。`);
 }
 
 async function copyPrompt() {
 	const d = deck();
-	const text = formatComments({ name, version: d.version, source: d.source }, S.drafts);
+	const drafts = versionDrafts();
+	const text = formatComments({ name, version: d.version, source: d.source }, drafts);
 	try {
 		await navigator.clipboard.writeText(text);
 	} catch {
@@ -307,7 +327,7 @@ async function copyPrompt() {
 		document.execCommand("copy");
 		ta.remove();
 	}
-	toast(`已复制 ${S.drafts.length} 条批注。待发列表保留，确认 Claude 收到后可删除或改用「发送」。`);
+	toast(`已复制 ${drafts.length} 条批注。待发列表保留，确认 Claude 收到后可删除或改用「发送」。`);
 }
 
 async function withdraw(id) {
@@ -329,6 +349,7 @@ $("composer-body").addEventListener("keydown", (e) => {
 $("whole").addEventListener("click", () => openComposer(null, [0.97, 0.05]));
 $("send").addEventListener("click", sendDrafts);
 $("copy").addEventListener("click", copyPrompt);
+$("clear").addEventListener("click", clearVersion);
 $("compare").addEventListener("change", (e) => ((S.compare = e.target.checked), renderStage()));
 $("version").addEventListener("change", async (e) => {
 	await loadDeck(Number(e.target.value));
