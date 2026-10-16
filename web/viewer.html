@@ -20,7 +20,7 @@
   <main id="stage">
     <div id="frames"></div>
     <section id="notes" aria-label="备注"></section>
-    <p class="hint muted">点一个形状写批注 · 点空白处或按 <button id="whole" class="link">整页批注</button> · ←/→ 翻页</p>
+    <p class="hint muted" id="hint"></p>
   </main>
   <aside id="side">
     <form id="composer" hidden>
@@ -38,8 +38,8 @@
     </details>
     <div class="dock">
       <div class="muted" id="draft-count"></div>
-      <div class="row"><button id="send" class="pri">发送</button><button id="copy">复制为提示词</button></div>
-      <button id="clear" class="link danger" hidden>清除本版全部批注</button>
+      <button id="copy" class="pri">复制为提示词</button>
+      <div class="row"><button id="send" class="link">改用发送</button><button id="clear" class="link danger" hidden>清除本版全部批注</button></div>
       <div id="toast" class="muted" role="status"></div>
     </div>
   </aside>

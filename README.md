@@ -12,7 +12,7 @@ server-deck 审阅的就是交付的那份 pptx：
 
 - 每页由 LibreOffice 渲染成图片；每个形状的位置从 pptx 的 XML 里读出来，叠在图上可点。
 - 批注记下页码、形状名（pptxgenjs 的 `objectName`）和形状里的文字，agent 能直接对回生成脚本里的那一行。
-- 批注先攒着，一次发送；agent 逐条标"已改 / 未改"并附一句说明，下一版在页面上显示。
+- 批注只写在最新版上，先攒着，一键"复制为提示词"粘贴给 Claude（再复制时只带新写的）；也可以"发送"到服务器，agent 用 `deck comments` 读取、逐条标"已改 / 未改"并附一句说明。历史版本只能查看。
 - 新版本发布后，有变化的页在缩略图上标蓝点，可以和上一版左右对照。
 - 每页下面显示演讲者备注；可以下载每个版本的原 pptx。
 - 发布前检查 deck 用到的字体服务器上是否都装了；缺一个就停下，因为字体被替换后换行和排版会和 PowerPoint 不一致。
@@ -22,8 +22,9 @@ server-deck 审阅的就是交付的那份 pptx：
 ```
 Claude Code 生成 x.pptx
   → deck publish x.pptx talk        渲染每页 PNG、抽出形状框和备注，存为 data/talk/v<n>/
-  → 浏览器打开 https://<你的域名>/deck/talk/，点形状写批注，发送
-  → 在会话里说「看批注」：deck comments talk 打印批注 → 改脚本 → deck resolve → 再 publish
+  → 浏览器打开 https://<你的域名>/deck/talk/，点形状写批注，复制为提示词
+  → 粘贴给 Claude：改脚本 → 再 publish
+    （或点"发送"，再说「看批注」：deck comments talk → 改脚本 → deck resolve → 再 publish）
 ```
 
 渲染在 `deck` 命令行里完成；`server.mjs` 只提供静态文件和批注接口，只监听 `127.0.0.1`，需要放在带登录的反向代理后面。
@@ -54,7 +55,7 @@ echo '{ "urlBase": "https://example.com/deck/" }' > config.json   # deck publish
 
 ```
 deck publish <file.pptx> <name>          渲染并发布新版本，打印网址
-deck comments <name> [--all]             打印待处理批注（--all 含已处理），作为提示词
+deck comments <name> [--all]             打印最新版的待处理批注（--all 含已处理），作为提示词
 deck resolve <name> <id> "<改了什么>"     标记已改
 deck resolve <name> <id> --skip "<原因>"  标记不改
 deck list                                列出所有 deck

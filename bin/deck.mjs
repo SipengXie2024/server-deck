@@ -19,7 +19,7 @@ const url = (name) => `${BASE}${name}/`;
 
 const USAGE = `用法：
   deck publish <file.pptx> <name>      渲染并发布新版本，打印网址
-  deck comments <name> [--all]         打印待处理批注（--all 含已处理），作为提示词
+  deck comments <name> [--all]         打印最新版的待处理批注（--all 含已处理），作为提示词
   deck resolve <name> <id> "<改了什么>"  标记已改
   deck resolve <name> <id> --skip "<原因>"  标记不改
   deck list                            列出所有 deck`;
@@ -60,7 +60,8 @@ async function main() {
 			const [name] = args;
 			if (!name) fail(USAGE);
 			const deck = await latest(name);
-			const all = await readComments(name);
+			// Only the latest version's comments matter; older versions are history.
+			const all = (await readComments(name)).filter((c) => c.version === deck.version);
 			const list = args.includes("--all") ? all : all.filter((c) => c.status === "open");
 			if (!list.length) {
 				console.log(`${name}：没有待处理的批注。网页：${url(name)}`);

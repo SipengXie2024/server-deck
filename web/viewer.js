@@ -33,6 +33,8 @@ const saveDrafts = () => localStorage.setItem(draftsKey, JSON.stringify(S.drafts
 // Comments belong to the version they were written on; the page shows only the current version's.
 const ofVersion = (c) => c.version === S.v;
 const versionDrafts = () => S.drafts.filter(ofVersion);
+// Comments are written only on the latest version; older versions are read-only.
+const isLatest = () => S.v === S.versions.at(-1).version;
 
 async function loadDeck(v) {
 	if (!S.decks.has(v)) {
@@ -90,13 +92,7 @@ function renderHeader() {
 	dl.href = api(`v/${S.v}/deck.pptx`);
 	dl.title = `下载 v${S.v} 的原 pptx（${deck().file ?? ""}）`;
 	const open = S.comments.filter((c) => c.status === "open" && ofVersion(c)).length;
-	// Open comments on other versions are hidden here but still reach Claude through `deck comments`.
-	const elsewhere = Map.groupBy(S.comments.filter((c) => c.status === "open" && !ofVersion(c)), (c) => c.version);
-	const parts = [
-		open ? `${open} 条待 Claude 处理` : null,
-		...[...elsewhere].sort(([a], [b]) => a - b).map(([v, cs]) => el("button", { class: "link", onclick: () => goTo(v, cs[0].slide) }, `v${v} 还有 ${cs.length} 条未处理`)),
-	].filter(Boolean);
-	$("open-count").replaceChildren(...parts.flatMap((x, i) => (i ? [" · ", x] : [x])));
+	$("open-count").textContent = open ? `${open} 条待 Claude 处理` : "";
 }
 
 function renderThumbs() {
@@ -122,8 +118,9 @@ function frame(d, s, { interactive, label }) {
 	const img = el("img", { src: api(`v/${d.version}/${s.png}`), alt: `第 ${s.n} 页`, draggable: "false" });
 	const box = el("div", { class: "hover-box", hidden: true });
 	const pins = el("div", { class: "pins" });
-	const wrap = el("div", { class: `slidebox${interactive ? " interactive" : ""}`, style: `aspect-ratio:${d.size.cx}/${d.size.cy}` }, img, box, pins);
-	if (interactive) {
+	const commentable = interactive && isLatest();
+	const wrap = el("div", { class: `slidebox${commentable ? " interactive" : ""}`, style: `aspect-ratio:${d.size.cx}/${d.size.cy}` }, img, box, pins);
+	if (commentable) {
 		const pos = (e) => {
 			const r = img.getBoundingClientRect();
 			return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
@@ -142,9 +139,11 @@ function frame(d, s, { interactive, label }) {
 			const at = pos(e);
 			openComposer(hitTest(...at), at);
 		});
+	}
+	if (interactive) {
 		const here = [...S.drafts.map((c) => ({ ...c, draft: true })), ...S.comments].filter((c) => c.version === S.v && c.slide === s.n);
 		here.forEach((c, i) => {
-			pins.append(el("span", { class: `pin ${c.draft ? "draft" : c.status}`, style: `left:${c.at[0] * 100}%;top:${c.at[1] * 100}%`, title: c.body }, String(i + 1)));
+			pins.append(el("span", { class: `pin ${c.draft ? (c.copied ? "draft copied" : "draft") : c.status}`, style: `left:${c.at[0] * 100}%;top:${c.at[1] * 100}%`, title: c.body }, String(i + 1)));
 		});
 		if (S.target) {
 			pins.append(el("span", { class: "pin new", style: `left:${S.target.at[0] * 100}%;top:${S.target.at[1] * 100}%` }, "+"));
@@ -163,6 +162,11 @@ async function renderStage() {
 		const label = s.same != null ? `v${S.v - 1} 第 ${s.same} 页 · 未变化` : ps ? `v${S.v - 1} 第 ${ps.n} 页` : `v${S.v - 1} 没有这一页`;
 		frames.push(ps ? frame(prev, ps, { interactive: false, label }) : el("figure", { class: "empty" }, el("figcaption", { class: "muted" }, label)));
 	}
+	$("hint").replaceChildren(
+		...(isLatest()
+			? ["点一个形状写批注 · 点空白处或按 ", el("button", { class: "link", onclick: wholeSlide }, "整页批注"), " · ←/→ 翻页"]
+			: [`v${S.v} 是历史版本，只能查看 · `, el("button", { class: "link", onclick: () => goTo(S.versions.at(-1).version, S.n) }, `回到最新版 v${S.versions.at(-1).version} 写批注`)]),
+	);
 	frames.push(frame(d, s, { interactive: true, label: S.compare && S.v > 1 ? `v${S.v} 第 ${S.n} 页${d.changed.includes(S.n) ? " · 有变化" : ""}` : null }));
 	$("frames").replaceChildren(...frames);
 	$("frames").classList.toggle("two", frames.length === 2);
@@ -182,7 +186,7 @@ async function renderNotes() {
 }
 
 function commentItem(c, { showSlide }) {
-	const status = c.draft ? "待发" : { open: "已发，等 Claude", done: `v${c.resolvedIn ?? "下一版"} 已改`, skipped: "未改" }[c.status];
+	const status = c.draft ? (c.copied ? "已复制" : "未复制") : { open: "已发，等 Claude", done: `v${c.resolvedIn ?? "下一版"} 已改`, skipped: "未改" }[c.status];
 	const meta = [showSlide ? `第 ${c.slide} 页` : null, shapeLabel(c.shape), c.version !== S.v ? `写于 v${c.version}` : null, status].filter(Boolean).join(" · ");
 	const actions = [];
 	if (c.draft) actions.push(el("button", { class: "link", onclick: (e) => (e.stopPropagation(), removeDraft(c.key)) }, "删除"));
@@ -207,9 +211,11 @@ function renderSide() {
 	$("all-count").textContent = `(${all.length})`;
 	$("all-comments").replaceChildren(...all.map((c) => commentItem(c, { showSlide: true })));
 	const n = drafts.length;
-	$("draft-count").textContent = n ? `${n} 条待发` : "没有待发的批注";
+	const fresh = drafts.filter((c) => !c.copied).length;
+	$("draft-count").textContent = !n ? "还没有批注" : fresh === n ? `${n} 条未复制` : !fresh ? `${n} 条都已复制` : `${fresh} 条新写的未复制 · ${n - fresh} 条已复制过`;
 	$("send").disabled = $("copy").disabled = !n;
-	$("send").textContent = n ? `发送 ${n} 条` : "发送";
+	$("copy").textContent = !n ? "复制为提示词" : fresh ? `复制 ${fresh} 条新批注` : `再复制一遍全部 ${n} 条`;
+	$("send").textContent = n ? `改用发送（${n} 条）` : "改用发送";
 }
 
 async function render() {
@@ -302,7 +308,7 @@ async function sendDrafts() {
 async function clearVersion() {
 	const sent = S.comments.filter(ofVersion).length;
 	const drafts = versionDrafts().length;
-	if (!confirm(`清除 v${S.v} 的全部批注？已发送 ${sent} 条（含已处理）、待发 ${drafts} 条，删除后不能恢复。其他版本的批注不受影响。`)) return;
+	if (!confirm(`清除 v${S.v} 的全部批注（已发送 ${sent} 条、未发送 ${drafts} 条）？删除后不能恢复。`)) return;
 	if (sent) {
 		const r = await fetch(api(`api/comments?version=${S.v}`), { method: "DELETE" });
 		if (!r.ok) return toast(`清除失败：${await r.text()}`);
@@ -316,7 +322,10 @@ async function clearVersion() {
 
 async function copyPrompt() {
 	const d = deck();
-	const drafts = versionDrafts();
+	// Copy only what has not been copied yet, so a second batch does not repeat the first;
+	// once everything is copied, copy it all again.
+	const all = versionDrafts();
+	const drafts = all.some((c) => !c.copied) ? all.filter((c) => !c.copied) : all;
 	const text = formatComments({ name, version: d.version, source: d.source }, drafts);
 	try {
 		await navigator.clipboard.writeText(text);
@@ -327,7 +336,11 @@ async function copyPrompt() {
 		document.execCommand("copy");
 		ta.remove();
 	}
-	toast(`已复制 ${drafts.length} 条批注。待发列表保留，确认 Claude 收到后可删除或改用「发送」。`);
+	for (const c of drafts) c.copied = true;
+	saveDrafts();
+	renderSide();
+	renderStage();
+	toast(`已复制 ${drafts.length} 条批注，粘贴给 Claude 即可。`);
 }
 
 async function withdraw(id) {
@@ -346,7 +359,9 @@ $("composer-body").addEventListener("keydown", (e) => {
 	if (e.key === "Escape") closeComposer();
 });
 // Whole-slide comments pin to the top-right corner, clear of the content.
-$("whole").addEventListener("click", () => openComposer(null, [0.97, 0.05]));
+function wholeSlide() {
+	if (isLatest()) openComposer(null, [0.97, 0.05]);
+}
 $("send").addEventListener("click", sendDrafts);
 $("copy").addEventListener("click", copyPrompt);
 $("clear").addEventListener("click", clearVersion);
