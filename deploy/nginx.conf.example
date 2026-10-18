@@ -11,5 +11,7 @@ location ^~ /deck/ {
     proxy_set_header Host $host;
     proxy_set_header X-Remote-User $remote_user;
     client_max_body_size 1m;
+    # Stream videos straight through instead of spooling them to a temp file first.
+    proxy_max_temp_file_size 0;
     add_header X-Robots-Tag "noindex, nofollow";
 }

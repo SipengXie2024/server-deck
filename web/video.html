@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video</title>
+<link rel="stylesheet" href="../_static/viewer.css">
+<script type="module" src="../_static/video.js"></script>
+<body>
+<header class="bar">
+  <a class="home" href="../" title="所有 deck">◂</a>
+  <b id="deck-name"></b>
+  <select id="version" title="版本"></select>
+  <a id="download" class="dl">下载 mp4</a>
+  <span class="grow"></span>
+  <span id="open-count" class="muted"></span>
+</header>
+<div class="layout video">
+  <nav id="scenes" aria-label="场景"></nav>
+  <main id="stage">
+    <figure class="player">
+      <div class="videobox" id="videobox">
+        <video id="video" controls preload="metadata" playsinline></video>
+        <div class="hit" id="hit" title="拖一个框或点一下：暂停并在这一刻写批注"></div>
+        <div class="pins" id="pins"></div>
+      </div>
+    </figure>
+    <div id="track" class="track" aria-label="时间轴"></div>
+    <section id="notes" aria-label="旁白"></section>
+    <p class="hint muted" id="hint"></p>
+  </main>
+  <aside id="side">
+    <form id="composer" hidden>
+      <div class="target" id="composer-target"></div>
+      <textarea id="composer-body" rows="4" placeholder="写批注…（Ctrl+Enter 添加）"></textarea>
+      <div class="row"><button type="submit" class="pri">添加到待发</button><button type="button" id="composer-cancel">取消</button></div>
+    </form>
+    <section>
+      <h3>本场景 <span id="scene-label" class="muted"></span></h3>
+      <ul id="scene-comments" class="comments"></ul>
+    </section>
+    <details id="all">
+      <summary>本版全部批注 <span id="all-count" class="muted"></span></summary>
+      <ul id="all-comments" class="comments"></ul>
+    </details>
+    <div class="dock">
+      <div class="muted" id="draft-count"></div>
+      <button id="copy" class="pri">复制为提示词</button>
+      <div class="row"><button id="send" class="link">改用发送</button><button id="clear" class="link danger" hidden>清除本版全部批注</button></div>
+      <div id="toast" class="muted" role="status"></div>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

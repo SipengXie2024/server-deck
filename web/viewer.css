@@ -85,9 +85,44 @@ button.danger[hidden] { display: none; }
 
 .index { padding: 20px 28px; } .index li { margin: 6px 0; }
 
+/* video decks */
+.layout.video { grid-template-columns: 220px 1fr 300px; }
+#scenes { overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--line); }
+#scenes .empty { font-size: 12px; }
+.scene .thumb { width: 100%; }
+.scene .thumb .num { max-width: calc(100% - 30px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene.on .thumb { outline: 2px solid var(--accent); outline-offset: 1px; }
+.beats { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.beats li { cursor: pointer; padding: 2px 4px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.beats li b { color: var(--ink); font-weight: 600; }
+.beats li.on { background: #fdf0e6; color: var(--ink); }
+.beats li.untimed { cursor: default; }
+.player { margin: 0; width: 100%; max-width: calc((100vh - 230px) * 16 / 9); }
+.videobox { position: relative; background: #000; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.videobox video { display: block; width: 100%; }
+/* Leaves the bottom strip free for the native controls. */
+.videobox .hit { position: absolute; left: 0; right: 0; top: 0; bottom: 56px; cursor: crosshair; touch-action: none; user-select: none; }
+.videobox .hit[hidden] { display: none; }
+.rbox { position: absolute; border: 2px solid var(--accent); background: rgba(180,84,31,.10); border-radius: 2px; }
+.rbox.draft { border-style: dashed; background: rgba(255,255,255,.06); }
+.rbox.done { border-color: var(--ok); background: none; } .rbox.skipped { border-color: var(--skip); background: none; }
+.rbox.new { border-color: var(--blue); background: rgba(47,111,214,.12); }
+.track { position: relative; width: 100%; max-width: calc((100vh - 230px) * 16 / 9); height: 30px; flex-shrink: 0; background: var(--card); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.track .seg { position: absolute; top: 0; bottom: 0; border-right: 1px solid var(--line); overflow: hidden; }
+.track .seg span { position: absolute; left: 4px; bottom: 2px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.track .seg.chg { box-shadow: inset 0 3px 0 var(--blue); }
+.track .mark { position: absolute; top: 3px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--accent); pointer-events: none; }
+.track .mark.draft { background: #fff; border: 1.5px solid var(--accent); }
+.track .mark.done { background: var(--ok); } .track .mark.skipped { background: var(--skip); }
+.track .head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); pointer-events: none; }
+#stage #notes { max-width: calc((100vh - 230px) * 16 / 9); }
+
 @media (max-width: 900px) {
 	.layout { grid-template-columns: 1fr; height: auto; }
 	#thumbs { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
+	.layout.video { grid-template-columns: 1fr; }
+	#scenes { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
+	.scene { flex: 0 0 140px; } .beats { display: none; }
 	.thumb { flex: 0 0 96px; }
 	#stage { order: 1; padding: 8px; }
 	#side { order: 3; border-left: 0; }

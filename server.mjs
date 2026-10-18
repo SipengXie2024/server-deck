@@ -1,10 +1,11 @@
 // Viewer pages, rendered slides and the comment API. Listens on loopback only;
 // Put it behind a reverse proxy with auth (see deploy/nginx.conf.example).
 import { createReadStream, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clock, videoTarget } from "./lib/prompt.mjs";
 import { deckDir, listDecks, NAME_RE, newCommentId, readComments, readDeck, updateComments, versions } from "./lib/store.mjs";
 
 const PORT = Number(process.env.DECK_PORT || 7240);
@@ -15,10 +16,32 @@ const BODY_LEN_MAX = 4000; // characters in one comment
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const STATIC = {
 	"viewer.js": [here("web/viewer.js"), "text/javascript"],
+	"video.js": [here("web/video.js"), "text/javascript"],
 	"viewer.css": [here("web/viewer.css"), "text/css"],
 	"prompt.mjs": [here("lib/prompt.mjs"), "text/javascript"],
 };
-const TYPES = { ".png": "image/png", ".json": "application/json", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json", ".mp4": "video/mp4", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+// A published version never changes, so its files can be cached.
+const IMMUTABLE = "private, max-age=31536000, immutable";
+
+// Serve a file with HTTP Range support; <video> needs 206 responses to seek.
+async function sendFile(req, res, p, headers) {
+	const size = (await stat(p)).size;
+	const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+	if (!m || (!m[1] && !m[2])) {
+		res.writeHead(200, { "Content-Length": size, "Accept-Ranges": "bytes", ...headers });
+		return createReadStream(p).pipe(res);
+	}
+	// "bytes=-N" is the last N bytes.
+	let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+	let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+	if (start >= size || start > end) {
+		res.writeHead(416, { "Content-Range": `bytes */${size}` });
+		return res.end();
+	}
+	res.writeHead(206, { "Content-Length": end - start + 1, "Content-Range": `bytes ${start}-${end}/${size}`, "Accept-Ranges": "bytes", ...headers });
+	return createReadStream(p, { start, end }).pipe(res);
+}
 
 function send(res, code, body, type = "text/plain; charset=utf-8", extra = {}) {
 	res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store", ...extra });
@@ -46,21 +69,34 @@ async function indexPage() {
 		if (!v) continue;
 		const deck = await readDeck(name, v);
 		const open = (await readComments(name)).filter((c) => c.status === "open").length;
-		rows.push(`<li><a href="${escapeHtml(name)}/">${escapeHtml(name)}</a> · v${v} · ${deck.slides.length} 页 · ${escapeHtml(deck.publishedAt.slice(0, 16).replace("T", " "))} UTC${open ? ` · <b>${open} 条待处理</b>` : ""}</li>`);
+		const size = deck.kind === "video" ? `视频 ${clock(deck.duration)}` : `${deck.slides.length} 页`;
+		rows.push(`<li><a href="${escapeHtml(name)}/">${escapeHtml(name)}</a> · v${v} · ${size} · ${escapeHtml(deck.publishedAt.slice(0, 16).replace("T", " "))} UTC${open ? ` · <b>${open} 条待处理</b>` : ""}</li>`);
 	}
 	return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Decks</title><link rel="stylesheet" href="_static/viewer.css"><body class="index"><h1>Decks</h1><ul>${rows.join("") || "<li>还没有发布过 deck</li>"}</ul></body>`;
 }
 
 function cleanComment(c, deck) {
-	const slide = deck.slides[Number(c.slide) - 1];
-	if (!slide) throw new Error(`no slide ${c.slide}`);
 	const body = String(c.body ?? "").trim();
 	if (!body || body.length > BODY_LEN_MAX) throw new Error("comment body is empty or too long");
+	const at = Array.isArray(c.at) && c.at.length === 2 ? c.at.map((x) => Math.min(1, Math.max(0, Number(x) || 0))) : null;
+	if (deck.kind === "video") {
+		const t = Number(c.t);
+		if (!Number.isFinite(t) || t < 0 || t > deck.duration + 0.5) throw new Error(`no time ${c.t} in the video`);
+		// As with shapes, the scene and line come from deck.json rather than the client.
+		// box: [x, y, w, h] as fractions of the picture, kept inside it.
+		let box = null;
+		if (Array.isArray(c.box) && c.box.length === 4) {
+			const [x, y, w, h] = c.box.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
+			if (w > 0 && h > 0) box = [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)].map((v) => Math.round(v * 1000) / 1000);
+		}
+		return { t: Math.round(t * 100) / 100, at, box, ...videoTarget(deck, t), body };
+	}
+	const slide = deck.slides[Number(c.slide) - 1];
+	if (!slide) throw new Error(`no slide ${c.slide}`);
 	// Take the shape from deck.json, not from the client, so the prompt quotes the real text.
 	const shape = c.shapeId == null ? null : slide.shapes.find((s) => s.id === Number(c.shapeId));
 	if (c.shapeId != null && !shape) throw new Error(`no shape ${c.shapeId} on slide ${c.slide}`);
-	const at = Array.isArray(c.at) && c.at.length === 2 ? c.at.map((x) => Math.min(1, Math.max(0, Number(x) || 0))) : [0.5, 0.5];
-	return { slide: slide.n, shape: shape && { id: shape.id, name: shape.name, text: shape.text }, at, body };
+	return { slide: slide.n, shape: shape && { id: shape.id, name: shape.name, text: shape.text }, at: at ?? [0.5, 0.5], body };
 }
 
 async function handle(req, res) {
@@ -82,12 +118,14 @@ async function handle(req, res) {
 
 	const rest = parts.slice(1);
 	if (rest.length === 0 || (rest.length === 1 && rest[0] === "index.html")) {
-		return send(res, 200, await readFile(here("web/viewer.html")), "text/html; charset=utf-8");
+		const v = (await versions(name)).at(-1);
+		const page = v && (await readDeck(name, v)).kind === "video" ? "web/video.html" : "web/viewer.html";
+		return send(res, 200, await readFile(here(page)), "text/html; charset=utf-8");
 	}
 
 	if (rest[0] === "v" && rest.length === 3) {
 		const [, v, file] = rest;
-		if (!/^\d+$/.test(v) || !/^(deck\.json|deck\.pptx|[st]-\d{3}\.png)$/.test(file)) return send(res, 404, "not found");
+		if (!/^\d+$/.test(v) || !/^(deck\.json|deck\.pptx|video\.mp4|[st]-\d{3}\.(png|jpg))$/.test(file)) return send(res, 404, "not found");
 		const p = path.join(deckDir(name), `v${v}`, file);
 		if (!existsSync(p)) return send(res, 404, "not found");
 		if (file === "deck.pptx") {
@@ -97,13 +135,16 @@ async function handle(req, res) {
 			res.writeHead(200, {
 				"Content-Type": TYPES[".pptx"],
 				"Content-Disposition": `attachment; filename="${name}-v${v}.pptx"; filename*=UTF-8''${encodeURIComponent(dl)}`,
-				"Cache-Control": "private, max-age=31536000, immutable",
+				"Cache-Control": IMMUTABLE,
 			});
 			return createReadStream(p).pipe(res);
 		}
-		// A published version never changes, so its files can be cached.
-		res.writeHead(200, { "Content-Type": TYPES[path.extname(file)], "Cache-Control": "private, max-age=31536000, immutable" });
-		return createReadStream(p).pipe(res);
+		const headers = { "Content-Type": TYPES[path.extname(file)], "Cache-Control": IMMUTABLE };
+		if (file === "video.mp4" && url.searchParams.has("download")) {
+			const dl = ((await readDeck(name, v)).file || `${name}.mp4`).replace(/(\.[^.]+)?$/, (ext) => `-v${v}${ext || ".mp4"}`);
+			headers["Content-Disposition"] = `attachment; filename="${name}-v${v}.mp4"; filename*=UTF-8''${encodeURIComponent(dl)}`;
+		}
+		return sendFile(req, res, p, headers);
 	}
 
 	if (rest[0] === "api" && rest[1] === "state" && req.method === "GET") {
@@ -111,7 +152,7 @@ async function handle(req, res) {
 		const decks = await Promise.all(vs.map((v) => readDeck(name, v)));
 		return json(res, 200, {
 			name,
-			versions: decks.map((d) => ({ version: d.version, publishedAt: d.publishedAt, changed: d.changed, slides: d.slides.length })),
+			versions: decks.map((d) => ({ version: d.version, publishedAt: d.publishedAt, changed: d.changed, ...(d.kind === "video" ? { duration: d.duration } : { slides: d.slides.length }) })),
 			comments: await readComments(name),
 		});
 	}
